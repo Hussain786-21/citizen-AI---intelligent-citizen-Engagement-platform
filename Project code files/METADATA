@@ -1,154 +1,99 @@
-Metadata-Version: 2.4
-Name: urllib3
-Version: 2.5.0
-Summary: HTTP library with thread-safe connection pooling, file post, and more.
-Project-URL: Changelog, https://github.com/urllib3/urllib3/blob/main/CHANGES.rst
-Project-URL: Documentation, https://urllib3.readthedocs.io
-Project-URL: Code, https://github.com/urllib3/urllib3
-Project-URL: Issue tracker, https://github.com/urllib3/urllib3/issues
-Author-email: Andrey Petrov <andrey.petrov@shazow.net>
-Maintainer-email: Seth Michael Larson <sethmichaellarson@gmail.com>, Quentin Pradet <quentin@pradet.me>, Illia Volochii <illia.volochii@gmail.com>
-License-Expression: MIT
-License-File: LICENSE.txt
-Keywords: filepost,http,httplib,https,pooling,ssl,threadsafe,urllib
+Metadata-Version: 2.3
+Name: Werkzeug
+Version: 3.1.3
+Summary: The comprehensive WSGI web application library.
+Maintainer-email: Pallets <contact@palletsprojects.com>
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Classifier: Development Status :: 5 - Production/Stable
 Classifier: Environment :: Web Environment
 Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
 Classifier: Operating System :: OS Independent
 Classifier: Programming Language :: Python
-Classifier: Programming Language :: Python :: 3
-Classifier: Programming Language :: Python :: 3 :: Only
-Classifier: Programming Language :: Python :: 3.9
-Classifier: Programming Language :: Python :: 3.10
-Classifier: Programming Language :: Python :: 3.11
-Classifier: Programming Language :: Python :: 3.12
-Classifier: Programming Language :: Python :: 3.13
-Classifier: Programming Language :: Python :: Implementation :: CPython
-Classifier: Programming Language :: Python :: Implementation :: PyPy
-Classifier: Topic :: Internet :: WWW/HTTP
-Classifier: Topic :: Software Development :: Libraries
-Requires-Python: >=3.9
-Provides-Extra: brotli
-Requires-Dist: brotli>=1.0.9; (platform_python_implementation == 'CPython') and extra == 'brotli'
-Requires-Dist: brotlicffi>=0.8.0; (platform_python_implementation != 'CPython') and extra == 'brotli'
-Provides-Extra: h2
-Requires-Dist: h2<5,>=4; extra == 'h2'
-Provides-Extra: socks
-Requires-Dist: pysocks!=1.5.7,<2.0,>=1.5.6; extra == 'socks'
-Provides-Extra: zstd
-Requires-Dist: zstandard>=0.18.0; extra == 'zstd'
-Description-Content-Type: text/markdown
+Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content
+Classifier: Topic :: Internet :: WWW/HTTP :: WSGI
+Classifier: Topic :: Internet :: WWW/HTTP :: WSGI :: Application
+Classifier: Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Classifier: Typing :: Typed
+Requires-Dist: MarkupSafe>=2.1.1
+Requires-Dist: watchdog>=2.3 ; extra == "watchdog"
+Project-URL: Changes, https://werkzeug.palletsprojects.com/changes/
+Project-URL: Chat, https://discord.gg/pallets
+Project-URL: Documentation, https://werkzeug.palletsprojects.com/
+Project-URL: Donate, https://palletsprojects.com/donate
+Project-URL: Issue Tracker, https://github.com/pallets/werkzeug/issues/
+Project-URL: Source Code, https://github.com/pallets/werkzeug/
+Provides-Extra: watchdog
 
-<h1 align="center">
+# Werkzeug
 
-![urllib3](https://github.com/urllib3/urllib3/raw/main/docs/_static/banner_github.svg)
+*werkzeug* German noun: "tool". Etymology: *werk* ("work"), *zeug* ("stuff")
 
-</h1>
+Werkzeug is a comprehensive [WSGI][] web application library. It began as
+a simple collection of various utilities for WSGI applications and has
+become one of the most advanced WSGI utility libraries.
 
-<p align="center">
-  <a href="https://pypi.org/project/urllib3"><img alt="PyPI Version" src="https://img.shields.io/pypi/v/urllib3.svg?maxAge=86400" /></a>
-  <a href="https://pypi.org/project/urllib3"><img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/urllib3.svg?maxAge=86400" /></a>
-  <a href="https://discord.gg/urllib3"><img alt="Join our Discord" src="https://img.shields.io/discord/756342717725933608?color=%237289da&label=discord" /></a>
-  <a href="https://github.com/urllib3/urllib3/actions?query=workflow%3ACI"><img alt="Coverage Status" src="https://img.shields.io/badge/coverage-100%25-success" /></a>
-  <a href="https://github.com/urllib3/urllib3/actions/workflows/ci.yml?query=branch%3Amain"><img alt="Build Status on GitHub" src="https://github.com/urllib3/urllib3/actions/workflows/ci.yml/badge.svg?branch:main&workflow:CI" /></a>
-  <a href="https://urllib3.readthedocs.io"><img alt="Documentation Status" src="https://readthedocs.org/projects/urllib3/badge/?version=latest" /></a><br>
-  <a href="https://deps.dev/pypi/urllib3"><img alt="OpenSSF Scorecard" src="https://api.securityscorecards.dev/projects/github.com/urllib3/urllib3/badge" /></a>
-  <a href="https://slsa.dev"><img alt="SLSA 3" src="https://slsa.dev/images/gh-badge-level3.svg" /></a>
-  <a href="https://bestpractices.coreinfrastructure.org/projects/6227"><img alt="CII Best Practices" src="https://bestpractices.coreinfrastructure.org/projects/6227/badge" /></a>
-</p>
+It includes:
 
-urllib3 is a powerful, *user-friendly* HTTP client for Python. Much of the
-Python ecosystem already uses urllib3 and you should too.
-urllib3 brings many critical features that are missing from the Python
-standard libraries:
+-   An interactive debugger that allows inspecting stack traces and
+    source code in the browser with an interactive interpreter for any
+    frame in the stack.
+-   A full-featured request object with objects to interact with
+    headers, query args, form data, files, and cookies.
+-   A response object that can wrap other WSGI applications and handle
+    streaming data.
+-   A routing system for matching URLs to endpoints and generating URLs
+    for endpoints, with an extensible system for capturing variables
+    from URLs.
+-   HTTP utilities to handle entity tags, cache control, dates, user
+    agents, cookies, files, and more.
+-   A threaded WSGI server for use while developing applications
+    locally.
+-   A test client for simulating HTTP requests during testing without
+    requiring running a server.
 
-- Thread safety.
-- Connection pooling.
-- Client-side SSL/TLS verification.
-- File uploads with multipart encoding.
-- Helpers for retrying requests and dealing with HTTP redirects.
-- Support for gzip, deflate, brotli, and zstd encoding.
-- Proxy support for HTTP and SOCKS.
-- 100% test coverage.
+Werkzeug doesn't enforce any dependencies. It is up to the developer to
+choose a template engine, database adapter, and even how to handle
+requests. It can be used to build all sorts of end user applications
+such as blogs, wikis, or bulletin boards.
 
-urllib3 is powerful and easy to use:
+[Flask][] wraps Werkzeug, using it to handle the details of WSGI while
+providing more structure and patterns for defining powerful
+applications.
 
-```python3
->>> import urllib3
->>> resp = urllib3.request("GET", "http://httpbin.org/robots.txt")
->>> resp.status
-200
->>> resp.data
-b"User-agent: *\nDisallow: /deny\n"
+[WSGI]: https://wsgi.readthedocs.io/en/latest/
+[Flask]: https://www.palletsprojects.com/p/flask/
+
+
+## A Simple Example
+
+```python
+# save this as app.py
+from werkzeug.wrappers import Request, Response
+
+@Request.application
+def application(request: Request) -> Response:
+    return Response("Hello, World!")
+
+if __name__ == "__main__":
+    from werkzeug.serving import run_simple
+    run_simple("127.0.0.1", 5000, application)
 ```
 
-## Installing
-
-urllib3 can be installed with [pip](https://pip.pypa.io):
-
-```bash
-$ python -m pip install urllib3
 ```
-
-Alternatively, you can grab the latest source code from [GitHub](https://github.com/urllib3/urllib3):
-
-```bash
-$ git clone https://github.com/urllib3/urllib3.git
-$ cd urllib3
-$ pip install .
+$ python -m app
+  * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
 ```
 
 
-## Documentation
+## Donate
 
-urllib3 has usage and reference documentation at [urllib3.readthedocs.io](https://urllib3.readthedocs.io).
+The Pallets organization develops and supports Werkzeug and other
+popular packages. In order to grow the community of contributors and
+users, and allow the maintainers to devote more time to the projects,
+[please donate today][].
 
+[please donate today]: https://palletsprojects.com/donate
 
-## Community
-
-urllib3 has a [community Discord channel](https://discord.gg/urllib3) for asking questions and
-collaborating with other contributors. Drop by and say hello 👋
-
-
-## Contributing
-
-urllib3 happily accepts contributions. Please see our
-[contributing documentation](https://urllib3.readthedocs.io/en/latest/contributing.html)
-for some tips on getting started.
-
-
-## Security Disclosures
-
-To report a security vulnerability, please use the
-[Tidelift security contact](https://tidelift.com/security).
-Tidelift will coordinate the fix and disclosure with maintainers.
-
-
-## Maintainers
-
-- [@sethmlarson](https://github.com/sethmlarson) (Seth M. Larson)
-- [@pquentin](https://github.com/pquentin) (Quentin Pradet)
-- [@illia-v](https://github.com/illia-v) (Illia Volochii)
-- [@theacodes](https://github.com/theacodes) (Thea Flowers)
-- [@haikuginger](https://github.com/haikuginger) (Jess Shapiro)
-- [@lukasa](https://github.com/lukasa) (Cory Benfield)
-- [@sigmavirus24](https://github.com/sigmavirus24) (Ian Stapleton Cordasco)
-- [@shazow](https://github.com/shazow) (Andrey Petrov)
-
-👋
-
-
-## Sponsorship
-
-If your company benefits from this library, please consider [sponsoring its
-development](https://urllib3.readthedocs.io/en/latest/sponsors.html).
-
-
-## For Enterprise
-
-Professional support for urllib3 is available as part of the [Tidelift
-Subscription][1].  Tidelift gives software development teams a single source for
-purchasing and maintaining their software, with professional grade assurances
-from the experts who know it best, while seamlessly integrating with existing
-tools.
-
-[1]: https://tidelift.com/subscription/pkg/pypi-urllib3?utm_source=pypi-urllib3&utm_medium=referral&utm_campaign=readme
