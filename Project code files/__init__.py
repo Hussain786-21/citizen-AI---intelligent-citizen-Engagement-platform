@@ -1,103 +1,18 @@
-import collections
-import logging
-from dataclasses import dataclass
-from typing import Generator, List, Optional, Sequence, Tuple
+from typing import List, Optional
 
-from pip._internal.cli.progress_bars import get_install_progress_renderer
-from pip._internal.utils.logging import indent_log
+from pip._internal.utils import _log
 
-from .req_file import parse_requirements
-from .req_install import InstallRequirement
-from .req_set import RequirementSet
-
-__all__ = [
-    "RequirementSet",
-    "InstallRequirement",
-    "parse_requirements",
-    "install_given_reqs",
-]
-
-logger = logging.getLogger(__name__)
+# init_logging() must be called before any call to logging.getLogger()
+# which happens at import of most modules.
+_log.init_logging()
 
 
-@dataclass(frozen=True)
-class InstallationResult:
-    name: str
+def main(args: Optional[List[str]] = None) -> int:
+    """This is preserved for old console scripts that may still be referencing
+    it.
 
-
-def _validate_requirements(
-    requirements: List[InstallRequirement],
-) -> Generator[Tuple[str, InstallRequirement], None, None]:
-    for req in requirements:
-        assert req.name, f"invalid to-be-installed requirement: {req}"
-        yield req.name, req
-
-
-def install_given_reqs(
-    requirements: List[InstallRequirement],
-    global_options: Sequence[str],
-    root: Optional[str],
-    home: Optional[str],
-    prefix: Optional[str],
-    warn_script_location: bool,
-    use_user_site: bool,
-    pycompile: bool,
-    progress_bar: str,
-) -> List[InstallationResult]:
+    For additional details, see https://github.com/pypa/pip/issues/7498.
     """
-    Install everything in the given list.
+    from pip._internal.utils.entrypoints import _wrapper
 
-    (to be called after having downloaded and unpacked the packages)
-    """
-    to_install = collections.OrderedDict(_validate_requirements(requirements))
-
-    if to_install:
-        logger.info(
-            "Installing collected packages: %s",
-            ", ".join(to_install.keys()),
-        )
-
-    installed = []
-
-    show_progress = logger.isEnabledFor(logging.INFO) and len(to_install) > 1
-
-    items = iter(to_install.values())
-    if show_progress:
-        renderer = get_install_progress_renderer(
-            bar_type=progress_bar, total=len(to_install)
-        )
-        items = renderer(items)
-
-    with indent_log():
-        for requirement in items:
-            req_name = requirement.name
-            assert req_name is not None
-            if requirement.should_reinstall:
-                logger.info("Attempting uninstall: %s", req_name)
-                with indent_log():
-                    uninstalled_pathset = requirement.uninstall(auto_confirm=True)
-            else:
-                uninstalled_pathset = None
-
-            try:
-                requirement.install(
-                    global_options,
-                    root=root,
-                    home=home,
-                    prefix=prefix,
-                    warn_script_location=warn_script_location,
-                    use_user_site=use_user_site,
-                    pycompile=pycompile,
-                )
-            except Exception:
-                # if install did not succeed, rollback previous uninstall
-                if uninstalled_pathset and not requirement.install_succeeded:
-                    uninstalled_pathset.rollback()
-                raise
-            else:
-                if uninstalled_pathset and requirement.install_succeeded:
-                    uninstalled_pathset.commit()
-
-            installed.append(InstallationResult(req_name))
-
-    return installed
+    return _wrapper(args)
