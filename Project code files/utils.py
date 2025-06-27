@@ -1,181 +1,98 @@
-import os
-import sys
-import time
-import errno
-import signal
-import warnings
-import subprocess
-import traceback
+from typing import Dict, Generator
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+from pip._vendor.requests.models import Response
+
+from pip._internal.exceptions import NetworkConnectionError
+
+# The following comments and HTTP headers were originally added by
+# Donald Stufft in git commit 22c562429a61bb77172039e480873fb239dd8c03.
+#
+# We use Accept-Encoding: identity here because requests defaults to
+# accepting compressed responses. This breaks in a variety of ways
+# depending on how the server is configured.
+# - Some servers will notice that the file isn't a compressible file
+#   and will leave the file alone and with an empty Content-Encoding
+# - Some servers will notice that the file is already compressed and
+#   will leave the file alone, adding a Content-Encoding: gzip header
+# - Some servers won't notice anything at all and will take a file
+#   that's already been compressed and compress it again, and set
+#   the Content-Encoding: gzip header
+# By setting this to request only the identity encoding we're hoping
+# to eliminate the third case.  Hopefully there does not exist a server
+# which when given a file will notice it is already compressed and that
+# you're not asking for a compressed file and will then decompress it
+# before sending because if that's the case I don't think it'll ever be
+# possible to make this work.
+HEADERS: Dict[str, str] = {"Accept-Encoding": "identity"}
+
+DOWNLOAD_CHUNK_SIZE = 256 * 1024
 
 
-def kill_process_tree(process, use_psutil=True):
-    """Terminate process and its descendants with SIGKILL"""
-    if use_psutil and psutil is not None:
-        _kill_process_tree_with_psutil(process)
+def raise_for_status(resp: Response) -> None:
+    http_error_msg = ""
+    if isinstance(resp.reason, bytes):
+        # We attempt to decode utf-8 first because some servers
+        # choose to localize their reason strings. If the string
+        # isn't utf-8, we fall back to iso-8859-1 for all other
+        # encodings.
+        try:
+            reason = resp.reason.decode("utf-8")
+        except UnicodeDecodeError:
+            reason = resp.reason.decode("iso-8859-1")
     else:
-        _kill_process_tree_without_psutil(process)
+        reason = resp.reason
 
-
-def recursive_terminate(process, use_psutil=True):
-    warnings.warn(
-        "recursive_terminate is deprecated in loky 3.2, use kill_process_tree"
-        "instead",
-        DeprecationWarning,
-    )
-    kill_process_tree(process, use_psutil=use_psutil)
-
-
-def _kill_process_tree_with_psutil(process):
-    try:
-        descendants = psutil.Process(process.pid).children(recursive=True)
-    except psutil.NoSuchProcess:
-        return
-
-    # Kill the descendants in reverse order to avoid killing the parents before
-    # the descendant in cases where there are more processes nested.
-    for descendant in descendants[::-1]:
-        try:
-            descendant.kill()
-        except psutil.NoSuchProcess:
-            pass
-
-    try:
-        psutil.Process(process.pid).kill()
-    except psutil.NoSuchProcess:
-        pass
-    process.join()
-
-
-def _kill_process_tree_without_psutil(process):
-    """Terminate a process and its descendants."""
-    try:
-        if sys.platform == "win32":
-            _windows_taskkill_process_tree(process.pid)
-        else:
-            _posix_recursive_kill(process.pid)
-    except Exception:  # pragma: no cover
-        details = traceback.format_exc()
-        warnings.warn(
-            "Failed to kill subprocesses on this platform. Please install"
-            "psutil: https://github.com/giampaolo/psutil\n"
-            f"Details:\n{details}"
+    if 400 <= resp.status_code < 500:
+        http_error_msg = (
+            f"{resp.status_code} Client Error: {reason} for url: {resp.url}"
         )
-        # In case we cannot introspect or kill the descendants, we fall back to
-        # only killing the main process.
-        #
-        # Note: on Windows, process.kill() is an alias for process.terminate()
-        # which in turns calls the Win32 API function TerminateProcess().
-        process.kill()
-    process.join()
 
-
-def _windows_taskkill_process_tree(pid):
-    # On windows, the taskkill function with option `/T` terminate a given
-    # process pid and its children.
-    try:
-        subprocess.check_output(
-            ["taskkill", "/F", "/T", "/PID", str(pid)], stderr=None
+    elif 500 <= resp.status_code < 600:
+        http_error_msg = (
+            f"{resp.status_code} Server Error: {reason} for url: {resp.url}"
         )
-    except subprocess.CalledProcessError as e:
-        # In Windows, taskkill returns 128, 255 for no process found.
-        if e.returncode not in [128, 255]:
-            # Let's raise to let the caller log the error details in a
-            # warning and only kill the root process.
-            raise  # pragma: no cover
+
+    if http_error_msg:
+        raise NetworkConnectionError(http_error_msg, response=resp)
 
 
-def _kill(pid):
-    # Not all systems (e.g. Windows) have a SIGKILL, but the C specification
-    # mandates a SIGTERM signal. While Windows is handled specifically above,
-    # let's try to be safe for other hypothetic platforms that only have
-    # SIGTERM without SIGKILL.
-    kill_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
+def response_chunks(
+    response: Response, chunk_size: int = DOWNLOAD_CHUNK_SIZE
+) -> Generator[bytes, None, None]:
+    """Given a requests Response, provide the data chunks."""
     try:
-        os.kill(pid, kill_signal)
-    except OSError as e:
-        # if OSError is raised with [Errno 3] no such process, the process
-        # is already terminated, else, raise the error and let the top
-        # level function raise a warning and retry to kill the process.
-        if e.errno != errno.ESRCH:
-            raise  # pragma: no cover
-
-
-def _posix_recursive_kill(pid):
-    """Recursively kill the descendants of a process before killing it."""
-    try:
-        children_pids = subprocess.check_output(
-            ["pgrep", "-P", str(pid)], stderr=None, text=True
-        )
-    except subprocess.CalledProcessError as e:
-        # `ps` returns 1 when no child process has been found
-        if e.returncode == 1:
-            children_pids = ""
-        else:
-            raise  # pragma: no cover
-
-    # Decode the result, split the cpid and remove the trailing line
-    for cpid in children_pids.splitlines():
-        cpid = int(cpid)
-        _posix_recursive_kill(cpid)
-
-    _kill(pid)
-
-
-def get_exitcodes_terminated_worker(processes):
-    """Return a formatted string with the exitcodes of terminated workers.
-
-    If necessary, wait (up to .25s) for the system to correctly set the
-    exitcode of one terminated worker.
-    """
-    patience = 5
-
-    # Catch the exitcode of the terminated workers. There should at least be
-    # one. If not, wait a bit for the system to correctly set the exitcode of
-    # the terminated worker.
-    exitcodes = [
-        p.exitcode for p in list(processes.values()) if p.exitcode is not None
-    ]
-    while not exitcodes and patience > 0:
-        patience -= 1
-        exitcodes = [
-            p.exitcode
-            for p in list(processes.values())
-            if p.exitcode is not None
-        ]
-        time.sleep(0.05)
-
-    return _format_exitcodes(exitcodes)
-
-
-def _format_exitcodes(exitcodes):
-    """Format a list of exit code with names of the signals if possible"""
-    str_exitcodes = [
-        f"{_get_exitcode_name(e)}({e})" for e in exitcodes if e is not None
-    ]
-    return "{" + ", ".join(str_exitcodes) + "}"
-
-
-def _get_exitcode_name(exitcode):
-    if sys.platform == "win32":
-        # The exitcode are unreliable  on windows (see bpo-31863).
-        # For this case, return UNKNOWN
-        return "UNKNOWN"
-
-    if exitcode < 0:
-        try:
-            import signal
-
-            return signal.Signals(-exitcode).name
-        except ValueError:
-            return "UNKNOWN"
-    elif exitcode != 255:
-        # The exitcode are unreliable on forkserver were 255 is always returned
-        # (see bpo-30589). For this case, return UNKNOWN
-        return "EXIT"
-
-    return "UNKNOWN"
+        # Special case for urllib3.
+        for chunk in response.raw.stream(
+            chunk_size,
+            # We use decode_content=False here because we don't
+            # want urllib3 to mess with the raw bytes we get
+            # from the server. If we decompress inside of
+            # urllib3 then we cannot verify the checksum
+            # because the checksum will be of the compressed
+            # file. This breakage will only occur if the
+            # server adds a Content-Encoding header, which
+            # depends on how the server was configured:
+            # - Some servers will notice that the file isn't a
+            #   compressible file and will leave the file alone
+            #   and with an empty Content-Encoding
+            # - Some servers will notice that the file is
+            #   already compressed and will leave the file
+            #   alone and will add a Content-Encoding: gzip
+            #   header
+            # - Some servers won't notice anything at all and
+            #   will take a file that's already been compressed
+            #   and compress it again and set the
+            #   Content-Encoding: gzip header
+            #
+            # By setting this not to decode automatically we
+            # hope to eliminate problems with the second case.
+            decode_content=False,
+        ):
+            yield chunk
+    except AttributeError:
+        # Standard file-like object.
+        while True:
+            chunk = response.raw.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
