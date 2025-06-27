@@ -1,16 +1,16 @@
-"""Various parser implementations.
+"""Default parsers to English for backwards compatibility so you can still do
 
-.. versionadded:: 0.6.0
+>>> from textblob.parsers import PatternParser
+
+which is equivalent to
+
+>>> from textblob.en.parsers import PatternParser
 """
+
 from textblob.base import BaseParser
-from textblob.en import parse as pattern_parse
+from textblob.en.parsers import PatternParser
 
-
-class PatternParser(BaseParser):
-    """Parser that uses the implementation in Tom de Smedt's pattern library.
-    http://www.clips.ua.ac.be/pages/pattern-en#parser
-    """
-
-    def parse(self, text):
-        """Parses the text."""
-        return pattern_parse(text)
+__all__ = [
+    "BaseParser",
+    "PatternParser",
+]
