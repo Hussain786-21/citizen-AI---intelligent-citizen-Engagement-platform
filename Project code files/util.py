@@ -1,72 +1,42 @@
-# Natural Language Toolkit: Tagger Utilities
-#
-# Copyright (C) 2001-2024 NLTK Project
-# Author: Edward Loper <edloper@gmail.com>
-#         Steven Bird <stevenbird1@gmail.com>
-# URL: <https://www.nltk.org/>
-# For license information, see LICENSE.TXT
+from __future__ import annotations
+
+import typing
+from types import TracebackType
 
 
-def str2tuple(s, sep="/"):
-    """
-    Given the string representation of a tagged token, return the
-    corresponding tuple representation.  The rightmost occurrence of
-    *sep* in *s* will be used to divide *s* into a word string and
-    a tag string.  If *sep* does not occur in *s*, return (s, None).
-
-        >>> from nltk.tag.util import str2tuple
-        >>> str2tuple('fly/NN')
-        ('fly', 'NN')
-
-    :type s: str
-    :param s: The string representation of a tagged token.
-    :type sep: str
-    :param sep: The separator string used to separate word strings
-        from tags.
-    """
-    loc = s.rfind(sep)
-    if loc >= 0:
-        return (s[:loc], s[loc + len(sep) :].upper())
-    else:
-        return (s, None)
+def to_bytes(
+    x: str | bytes, encoding: str | None = None, errors: str | None = None
+) -> bytes:
+    if isinstance(x, bytes):
+        return x
+    elif not isinstance(x, str):
+        raise TypeError(f"not expecting type {type(x).__name__}")
+    if encoding or errors:
+        return x.encode(encoding or "utf-8", errors=errors or "strict")
+    return x.encode()
 
 
-def tuple2str(tagged_token, sep="/"):
-    """
-    Given the tuple representation of a tagged token, return the
-    corresponding string representation.  This representation is
-    formed by concatenating the token's word string, followed by the
-    separator, followed by the token's tag.  (If the tag is None,
-    then just return the bare word string.)
-
-        >>> from nltk.tag.util import tuple2str
-        >>> tagged_token = ('fly', 'NN')
-        >>> tuple2str(tagged_token)
-        'fly/NN'
-
-    :type tagged_token: tuple(str, str)
-    :param tagged_token: The tuple representation of a tagged token.
-    :type sep: str
-    :param sep: The separator string used to separate word strings
-        from tags.
-    """
-    word, tag = tagged_token
-    if tag is None:
-        return word
-    else:
-        assert sep not in tag, "tag may not contain sep!"
-        return f"{word}{sep}{tag}"
+def to_str(
+    x: str | bytes, encoding: str | None = None, errors: str | None = None
+) -> str:
+    if isinstance(x, str):
+        return x
+    elif not isinstance(x, bytes):
+        raise TypeError(f"not expecting type {type(x).__name__}")
+    if encoding or errors:
+        return x.decode(encoding or "utf-8", errors=errors or "strict")
+    return x.decode()
 
 
-def untag(tagged_sentence):
-    """
-    Given a tagged sentence, return an untagged version of that
-    sentence.  I.e., return a list containing the first element
-    of each tuple in *tagged_sentence*.
-
-        >>> from nltk.tag.util import untag
-        >>> untag([('John', 'NNP'), ('saw', 'VBD'), ('Mary', 'NNP')])
-        ['John', 'saw', 'Mary']
-
-    """
-    return [w for (w, t) in tagged_sentence]
+def reraise(
+    tp: type[BaseException] | None,
+    value: BaseException,
+    tb: TracebackType | None = None,
+) -> typing.NoReturn:
+    try:
+        if value.__traceback__ is not tb:
+            raise value.with_traceback(tb)
+        raise value
+    finally:
+        value = None  # type: ignore[assignment]
+        tb = None
