@@ -1,92 +1,133 @@
-Metadata-Version: 2.1
-Name: MarkupSafe
-Version: 3.0.2
-Summary: Safely add untrusted strings to HTML/XML markup.
-Maintainer-email: Pallets <contact@palletsprojects.com>
-License: Copyright 2010 Pallets
-        
-        Redistribution and use in source and binary forms, with or without
-        modification, are permitted provided that the following conditions are
-        met:
-        
-        1.  Redistributions of source code must retain the above copyright
-            notice, this list of conditions and the following disclaimer.
-        
-        2.  Redistributions in binary form must reproduce the above copyright
-            notice, this list of conditions and the following disclaimer in the
-            documentation and/or other materials provided with the distribution.
-        
-        3.  Neither the name of the copyright holder nor the names of its
-            contributors may be used to endorse or promote products derived from
-            this software without specific prior written permission.
-        
-        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-        "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-        LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-        PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-        HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-        SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
-        TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-        PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-        LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-        NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-        
-Project-URL: Donate, https://palletsprojects.com/donate
-Project-URL: Documentation, https://markupsafe.palletsprojects.com/
-Project-URL: Changes, https://markupsafe.palletsprojects.com/changes/
-Project-URL: Source, https://github.com/pallets/markupsafe/
-Project-URL: Chat, https://discord.gg/pallets
+Metadata-Version: 2.4
+Name: requests
+Version: 2.32.4
+Summary: Python HTTP for Humans.
+Home-page: https://requests.readthedocs.io
+Author: Kenneth Reitz
+Author-email: me@kennethreitz.org
+License: Apache-2.0
+Project-URL: Documentation, https://requests.readthedocs.io
+Project-URL: Source, https://github.com/psf/requests
 Classifier: Development Status :: 5 - Production/Stable
 Classifier: Environment :: Web Environment
 Classifier: Intended Audience :: Developers
-Classifier: License :: OSI Approved :: BSD License
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Natural Language :: English
 Classifier: Operating System :: OS Independent
 Classifier: Programming Language :: Python
-Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content
-Classifier: Topic :: Text Processing :: Markup :: HTML
-Classifier: Typing :: Typed
-Requires-Python: >=3.9
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries
+Requires-Python: >=3.8
 Description-Content-Type: text/markdown
-License-File: LICENSE.txt
+License-File: LICENSE
+Requires-Dist: charset_normalizer<4,>=2
+Requires-Dist: idna<4,>=2.5
+Requires-Dist: urllib3<3,>=1.21.1
+Requires-Dist: certifi>=2017.4.17
+Provides-Extra: security
+Provides-Extra: socks
+Requires-Dist: PySocks!=1.5.7,>=1.5.6; extra == "socks"
+Provides-Extra: use-chardet-on-py3
+Requires-Dist: chardet<6,>=3.0.2; extra == "use-chardet-on-py3"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
-# MarkupSafe
+# Requests
 
-MarkupSafe implements a text object that escapes characters so it is
-safe to use in HTML and XML. Characters that have special meanings are
-replaced so that they display as the actual characters. This mitigates
-injection attacks, meaning untrusted user input can safely be displayed
-on a page.
+**Requests** is a simple, yet elegant, HTTP library.
 
-
-## Examples
-
-```pycon
->>> from markupsafe import Markup, escape
-
->>> # escape replaces special characters and wraps in Markup
->>> escape("<script>alert(document.cookie);</script>")
-Markup('&lt;script&gt;alert(document.cookie);&lt;/script&gt;')
-
->>> # wrap in Markup to mark text "safe" and prevent escaping
->>> Markup("<strong>Hello</strong>")
-Markup('<strong>hello</strong>')
-
->>> escape(Markup("<strong>Hello</strong>"))
-Markup('<strong>hello</strong>')
-
->>> # Markup is a str subclass
->>> # methods and operators escape their arguments
->>> template = Markup("Hello <em>{name}</em>")
->>> template.format(name='"World"')
-Markup('Hello <em>&#34;World&#34;</em>')
+```python
+>>> import requests
+>>> r = requests.get('https://httpbin.org/basic-auth/user/pass', auth=('user', 'pass'))
+>>> r.status_code
+200
+>>> r.headers['content-type']
+'application/json; charset=utf8'
+>>> r.encoding
+'utf-8'
+>>> r.text
+'{"authenticated": true, ...'
+>>> r.json()
+{'authenticated': True, ...}
 ```
 
-## Donate
+Requests allows you to send HTTP/1.1 requests extremely easily. There’s no need to manually add query strings to your URLs, or to form-encode your `PUT` & `POST` data — but nowadays, just use the `json` method!
 
-The Pallets organization develops and supports MarkupSafe and other
-popular packages. In order to grow the community of contributors and
-users, and allow the maintainers to devote more time to the projects,
-[please donate today][].
+Requests is one of the most downloaded Python packages today, pulling in around `30M downloads / week`— according to GitHub, Requests is currently [depended upon](https://github.com/psf/requests/network/dependents?package_id=UGFja2FnZS01NzA4OTExNg%3D%3D) by `1,000,000+` repositories. You may certainly put your trust in this code.
 
-[please donate today]: https://palletsprojects.com/donate
+[![Downloads](https://static.pepy.tech/badge/requests/month)](https://pepy.tech/project/requests)
+[![Supported Versions](https://img.shields.io/pypi/pyversions/requests.svg)](https://pypi.org/project/requests)
+[![Contributors](https://img.shields.io/github/contributors/psf/requests.svg)](https://github.com/psf/requests/graphs/contributors)
+
+## Installing Requests and Supported Versions
+
+Requests is available on PyPI:
+
+```console
+$ python -m pip install requests
+```
+
+Requests officially supports Python 3.8+.
+
+## Supported Features & Best–Practices
+
+Requests is ready for the demands of building robust and reliable HTTP–speaking applications, for the needs of today.
+
+- Keep-Alive & Connection Pooling
+- International Domains and URLs
+- Sessions with Cookie Persistence
+- Browser-style TLS/SSL Verification
+- Basic & Digest Authentication
+- Familiar `dict`–like Cookies
+- Automatic Content Decompression and Decoding
+- Multi-part File Uploads
+- SOCKS Proxy Support
+- Connection Timeouts
+- Streaming Downloads
+- Automatic honoring of `.netrc`
+- Chunked HTTP Requests
+
+## API Reference and User Guide available on [Read the Docs](https://requests.readthedocs.io)
+
+[![Read the Docs](https://raw.githubusercontent.com/psf/requests/main/ext/ss.png)](https://requests.readthedocs.io)
+
+## Cloning the repository
+
+When cloning the Requests repository, you may need to add the `-c
+fetch.fsck.badTimezone=ignore` flag to avoid an error about a bad commit (see
+[this issue](https://github.com/psf/requests/issues/2690) for more background):
+
+```shell
+git clone -c fetch.fsck.badTimezone=ignore https://github.com/psf/requests.git
+```
+
+You can also apply this setting to your global Git config:
+
+```shell
+git config --global fetch.fsck.badTimezone ignore
+```
+
+---
+
+[![Kenneth Reitz](https://raw.githubusercontent.com/psf/requests/main/ext/kr.png)](https://kennethreitz.org) [![Python Software Foundation](https://raw.githubusercontent.com/psf/requests/main/ext/psf.png)](https://www.python.org/psf)
