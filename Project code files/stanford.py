@@ -1,468 +1,236 @@
-# Natural Language Toolkit: Interface to the Stanford Parser
+# Natural Language Toolkit: Interface to the Stanford Part-of-speech and Named-Entity Taggers
 #
 # Copyright (C) 2001-2024 NLTK Project
-# Author: Steven Xu <xxu@student.unimelb.edu.au>
-#
+# Author: Nitin Madnani <nmadnani@ets.org>
+#         Rami Al-Rfou' <ralrfou@cs.stonybrook.edu>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
+
+"""
+A module for interfacing with the Stanford taggers.
+
+Tagger models need to be downloaded from https://nlp.stanford.edu/software
+and the STANFORD_MODELS environment variable set (a colon-separated
+list of paths).
+
+For more details see the documentation for StanfordPOSTagger and StanfordNERTagger.
+"""
 
 import os
 import tempfile
 import warnings
+from abc import abstractmethod
 from subprocess import PIPE
 
-from nltk.internals import (
-    _java_options,
-    config_java,
-    find_jar_iter,
-    find_jars_within_path,
-    java,
-)
-from nltk.parse.api import ParserI
-from nltk.parse.dependencygraph import DependencyGraph
-from nltk.tree import Tree
+from nltk.internals import _java_options, config_java, find_file, find_jar, java
+from nltk.tag.api import TaggerI
 
-_stanford_url = "https://nlp.stanford.edu/software/lex-parser.shtml"
+_stanford_url = "https://nlp.stanford.edu/software"
 
 
-class GenericStanfordParser(ParserI):
-    """Interface to the Stanford Parser"""
+class StanfordTagger(TaggerI):
+    """
+    An interface to Stanford taggers. Subclasses must define:
 
-    _MODEL_JAR_PATTERN = r"stanford-parser-(\d+)(\.(\d+))+-models\.jar"
-    _JAR = r"stanford-parser\.jar"
-    _MAIN_CLASS = "edu.stanford.nlp.parser.lexparser.LexicalizedParser"
+    - ``_cmd`` property: A property that returns the command that will be
+      executed.
+    - ``_SEPARATOR``: Class constant that represents that character that
+      is used to separate the tokens from their tags.
+    - ``_JAR`` file: Class constant that represents the jar file name.
+    """
 
-    _USE_STDIN = False
-    _DOUBLE_SPACED_OUTPUT = False
+    _SEPARATOR = ""
+    _JAR = ""
 
     def __init__(
         self,
+        model_filename,
         path_to_jar=None,
-        path_to_models_jar=None,
-        model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz",
         encoding="utf8",
         verbose=False,
-        java_options="-mx4g",
-        corenlp_options="",
+        java_options="-mx1000m",
     ):
-        # find the most recent code and model jar
-        stanford_jar = max(
-            find_jar_iter(
-                self._JAR,
-                path_to_jar,
-                env_vars=("STANFORD_PARSER", "STANFORD_CORENLP"),
-                searchpath=(),
-                url=_stanford_url,
-                verbose=verbose,
-                is_regex=True,
+        # Raise deprecation warning.
+        warnings.warn(
+            str(
+                "\nThe StanfordTokenizer will "
+                "be deprecated in version 3.2.6.\n"
+                "Please use \033[91mnltk.parse.corenlp.CoreNLPParser\033[0m instead."
             ),
-            key=lambda model_path: os.path.dirname(model_path),
+            DeprecationWarning,
+            stacklevel=2,
         )
 
-        model_jar = max(
-            find_jar_iter(
-                self._MODEL_JAR_PATTERN,
-                path_to_models_jar,
-                env_vars=("STANFORD_MODELS", "STANFORD_CORENLP"),
-                searchpath=(),
-                url=_stanford_url,
-                verbose=verbose,
-                is_regex=True,
-            ),
-            key=lambda model_path: os.path.dirname(model_path),
+        if not self._JAR:
+            warnings.warn(
+                "The StanfordTagger class is not meant to be "
+                "instantiated directly. Did you mean "
+                "StanfordPOSTagger or StanfordNERTagger?"
+            )
+        self._stanford_jar = find_jar(
+            self._JAR, path_to_jar, searchpath=(), url=_stanford_url, verbose=verbose
         )
 
-        # self._classpath = (stanford_jar, model_jar)
+        self._stanford_model = find_file(
+            model_filename, env_vars=("STANFORD_MODELS",), verbose=verbose
+        )
 
-        # Adding logging jar files to classpath
-        stanford_dir = os.path.split(stanford_jar)[0]
-        self._classpath = tuple([model_jar] + find_jars_within_path(stanford_dir))
-
-        self.model_path = model_path
         self._encoding = encoding
-        self.corenlp_options = corenlp_options
         self.java_options = java_options
 
-    def _parse_trees_output(self, output_):
-        res = []
-        cur_lines = []
-        cur_trees = []
-        blank = False
-        for line in output_.splitlines(False):
-            if line == "":
-                if blank:
-                    res.append(iter(cur_trees))
-                    cur_trees = []
-                    blank = False
-                elif self._DOUBLE_SPACED_OUTPUT:
-                    cur_trees.append(self._make_tree("\n".join(cur_lines)))
-                    cur_lines = []
-                    blank = True
-                else:
-                    res.append(iter([self._make_tree("\n".join(cur_lines))]))
-                    cur_lines = []
-            else:
-                cur_lines.append(line)
-                blank = False
-        return iter(res)
-
-    def parse_sents(self, sentences, verbose=False):
+    @property
+    @abstractmethod
+    def _cmd(self):
         """
-        Use StanfordParser to parse multiple sentences. Takes multiple sentences as a
-        list where each sentence is a list of words.
-        Each sentence will be automatically tagged with this StanfordParser instance's
-        tagger.
-        If whitespaces exists inside a token, then the token will be treated as
-        separate tokens.
-
-        :param sentences: Input sentences to parse
-        :type sentences: list(list(str))
-        :rtype: iter(iter(Tree))
+        A property that returns the command that will be executed.
         """
-        cmd = [
-            self._MAIN_CLASS,
-            "-model",
-            self.model_path,
-            "-sentences",
-            "newline",
-            "-outputFormat",
-            self._OUTPUT_FORMAT,
-            "-tokenized",
-            "-escaper",
-            "edu.stanford.nlp.process.PTBEscapingProcessor",
-        ]
-        return self._parse_trees_output(
-            self._execute(
-                cmd, "\n".join(" ".join(sentence) for sentence in sentences), verbose
-            )
-        )
 
-    def raw_parse(self, sentence, verbose=False):
-        """
-        Use StanfordParser to parse a sentence. Takes a sentence as a string;
-        before parsing, it will be automatically tokenized and tagged by
-        the Stanford Parser.
+    def tag(self, tokens):
+        # This function should return list of tuple rather than list of list
+        return sum(self.tag_sents([tokens]), [])
 
-        :param sentence: Input sentence to parse
-        :type sentence: str
-        :rtype: iter(Tree)
-        """
-        return next(self.raw_parse_sents([sentence], verbose))
-
-    def raw_parse_sents(self, sentences, verbose=False):
-        """
-        Use StanfordParser to parse multiple sentences. Takes multiple sentences as a
-        list of strings.
-        Each sentence will be automatically tokenized and tagged by the Stanford Parser.
-
-        :param sentences: Input sentences to parse
-        :type sentences: list(str)
-        :rtype: iter(iter(Tree))
-        """
-        cmd = [
-            self._MAIN_CLASS,
-            "-model",
-            self.model_path,
-            "-sentences",
-            "newline",
-            "-outputFormat",
-            self._OUTPUT_FORMAT,
-        ]
-        return self._parse_trees_output(
-            self._execute(cmd, "\n".join(sentences), verbose)
-        )
-
-    def tagged_parse(self, sentence, verbose=False):
-        """
-        Use StanfordParser to parse a sentence. Takes a sentence as a list of
-        (word, tag) tuples; the sentence must have already been tokenized and
-        tagged.
-
-        :param sentence: Input sentence to parse
-        :type sentence: list(tuple(str, str))
-        :rtype: iter(Tree)
-        """
-        return next(self.tagged_parse_sents([sentence], verbose))
-
-    def tagged_parse_sents(self, sentences, verbose=False):
-        """
-        Use StanfordParser to parse multiple sentences. Takes multiple sentences
-        where each sentence is a list of (word, tag) tuples.
-        The sentences must have already been tokenized and tagged.
-
-        :param sentences: Input sentences to parse
-        :type sentences: list(list(tuple(str, str)))
-        :rtype: iter(iter(Tree))
-        """
-        tag_separator = "/"
-        cmd = [
-            self._MAIN_CLASS,
-            "-model",
-            self.model_path,
-            "-sentences",
-            "newline",
-            "-outputFormat",
-            self._OUTPUT_FORMAT,
-            "-tokenized",
-            "-tagSeparator",
-            tag_separator,
-            "-tokenizerFactory",
-            "edu.stanford.nlp.process.WhitespaceTokenizer",
-            "-tokenizerMethod",
-            "newCoreLabelTokenizerFactory",
-        ]
-        # We don't need to escape slashes as "splitting is done on the last instance of the character in the token"
-        return self._parse_trees_output(
-            self._execute(
-                cmd,
-                "\n".join(
-                    " ".join(tag_separator.join(tagged) for tagged in sentence)
-                    for sentence in sentences
-                ),
-                verbose,
-            )
-        )
-
-    def _execute(self, cmd, input_, verbose=False):
+    def tag_sents(self, sentences):
         encoding = self._encoding
-        cmd.extend(["-encoding", encoding])
-        if self.corenlp_options:
-            cmd.extend(self.corenlp_options.split())
-
         default_options = " ".join(_java_options)
+        config_java(options=self.java_options, verbose=False)
 
-        # Configure java.
-        config_java(options=self.java_options, verbose=verbose)
+        # Create a temporary input file
+        _input_fh, self._input_file_path = tempfile.mkstemp(text=True)
 
-        # Windows is incompatible with NamedTemporaryFile() without passing in delete=False.
-        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as input_file:
-            # Write the actual sentences to the temporary input file
-            if isinstance(input_, str) and encoding:
-                input_ = input_.encode(encoding)
-            input_file.write(input_)
-            input_file.flush()
+        cmd = list(self._cmd)
+        cmd.extend(["-encoding", encoding])
 
-            # Run the tagger and get the output.
-            if self._USE_STDIN:
-                input_file.seek(0)
-                stdout, stderr = java(
-                    cmd,
-                    classpath=self._classpath,
-                    stdin=input_file,
-                    stdout=PIPE,
-                    stderr=PIPE,
-                )
-            else:
-                cmd.append(input_file.name)
-                stdout, stderr = java(
-                    cmd, classpath=self._classpath, stdout=PIPE, stderr=PIPE
-                )
+        # Write the actual sentences to the temporary input file
+        _input_fh = os.fdopen(_input_fh, "wb")
+        _input = "\n".join(" ".join(x) for x in sentences)
+        if isinstance(_input, str) and encoding:
+            _input = _input.encode(encoding)
+        _input_fh.write(_input)
+        _input_fh.close()
 
-            stdout = stdout.replace(b"\xc2\xa0", b" ")
-            stdout = stdout.replace(b"\x00\xa0", b" ")
-            stdout = stdout.decode(encoding)
+        # Run the tagger and get the output
+        stanpos_output, _stderr = java(
+            cmd, classpath=self._stanford_jar, stdout=PIPE, stderr=PIPE
+        )
+        stanpos_output = stanpos_output.decode(encoding)
 
-        os.unlink(input_file.name)
+        # Delete the temporary file
+        os.unlink(self._input_file_path)
 
-        # Return java configurations to their default values.
+        # Return java configurations to their default values
         config_java(options=default_options, verbose=False)
 
-        return stdout
+        return self.parse_output(stanpos_output, sentences)
+
+    def parse_output(self, text, sentences=None):
+        # Output the tagged sentences
+        tagged_sentences = []
+        for tagged_sentence in text.strip().split("\n"):
+            sentence = []
+            for tagged_word in tagged_sentence.strip().split():
+                word_tags = tagged_word.strip().split(self._SEPARATOR)
+                sentence.append(
+                    ("".join(word_tags[:-1]), word_tags[-1].replace("0", "").upper())
+                )
+            tagged_sentences.append(sentence)
+        return tagged_sentences
 
 
-class StanfordParser(GenericStanfordParser):
+class StanfordPOSTagger(StanfordTagger):
     """
-    >>> parser=StanfordParser(
-    ...     model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz"
-    ... ) # doctest: +SKIP
+    A class for pos tagging with Stanford Tagger. The input is the paths to:
+     - a model trained on training data
+     - (optionally) the path to the stanford tagger jar file. If not specified here,
+       then this jar file must be specified in the CLASSPATH environment variable.
+     - (optionally) the encoding of the training data (default: UTF-8)
 
-    >>> list(parser.raw_parse("the quick brown fox jumps over the lazy dog")) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('ROOT', [Tree('NP', [Tree('NP', [Tree('DT', ['the']), Tree('JJ', ['quick']), Tree('JJ', ['brown']),
-    Tree('NN', ['fox'])]), Tree('NP', [Tree('NP', [Tree('NNS', ['jumps'])]), Tree('PP', [Tree('IN', ['over']),
-    Tree('NP', [Tree('DT', ['the']), Tree('JJ', ['lazy']), Tree('NN', ['dog'])])])])])])]
+    Example:
 
-    >>> sum([list(dep_graphs) for dep_graphs in parser.raw_parse_sents((
-    ...     "the quick brown fox jumps over the lazy dog",
-    ...     "the quick grey wolf jumps over the lazy fox"
-    ... ))], []) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('ROOT', [Tree('NP', [Tree('NP', [Tree('DT', ['the']), Tree('JJ', ['quick']), Tree('JJ', ['brown']),
-    Tree('NN', ['fox'])]), Tree('NP', [Tree('NP', [Tree('NNS', ['jumps'])]), Tree('PP', [Tree('IN', ['over']),
-    Tree('NP', [Tree('DT', ['the']), Tree('JJ', ['lazy']), Tree('NN', ['dog'])])])])])]), Tree('ROOT', [Tree('NP',
-    [Tree('NP', [Tree('DT', ['the']), Tree('JJ', ['quick']), Tree('JJ', ['grey']), Tree('NN', ['wolf'])]), Tree('NP',
-    [Tree('NP', [Tree('NNS', ['jumps'])]), Tree('PP', [Tree('IN', ['over']), Tree('NP', [Tree('DT', ['the']),
-    Tree('JJ', ['lazy']), Tree('NN', ['fox'])])])])])])]
-
-    >>> sum([list(dep_graphs) for dep_graphs in parser.parse_sents((
-    ...     "I 'm a dog".split(),
-    ...     "This is my friends ' cat ( the tabby )".split(),
-    ... ))], []) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('ROOT', [Tree('S', [Tree('NP', [Tree('PRP', ['I'])]), Tree('VP', [Tree('VBP', ["'m"]),
-    Tree('NP', [Tree('DT', ['a']), Tree('NN', ['dog'])])])])]), Tree('ROOT', [Tree('S', [Tree('NP',
-    [Tree('DT', ['This'])]), Tree('VP', [Tree('VBZ', ['is']), Tree('NP', [Tree('NP', [Tree('NP', [Tree('PRP$', ['my']),
-    Tree('NNS', ['friends']), Tree('POS', ["'"])]), Tree('NN', ['cat'])]), Tree('PRN', [Tree('-LRB-', [Tree('', []),
-    Tree('NP', [Tree('DT', ['the']), Tree('NN', ['tabby'])]), Tree('-RRB-', [])])])])])])])]
-
-    >>> sum([list(dep_graphs) for dep_graphs in parser.tagged_parse_sents((
-    ...     (
-    ...         ("The", "DT"),
-    ...         ("quick", "JJ"),
-    ...         ("brown", "JJ"),
-    ...         ("fox", "NN"),
-    ...         ("jumped", "VBD"),
-    ...         ("over", "IN"),
-    ...         ("the", "DT"),
-    ...         ("lazy", "JJ"),
-    ...         ("dog", "NN"),
-    ...         (".", "."),
-    ...     ),
-    ... ))],[]) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('ROOT', [Tree('S', [Tree('NP', [Tree('DT', ['The']), Tree('JJ', ['quick']), Tree('JJ', ['brown']),
-    Tree('NN', ['fox'])]), Tree('VP', [Tree('VBD', ['jumped']), Tree('PP', [Tree('IN', ['over']), Tree('NP',
-    [Tree('DT', ['the']), Tree('JJ', ['lazy']), Tree('NN', ['dog'])])])]), Tree('.', ['.'])])])]
+        >>> from nltk.tag import StanfordPOSTagger
+        >>> st = StanfordPOSTagger('english-bidirectional-distsim.tagger') # doctest: +SKIP
+        >>> st.tag('What is the airspeed of an unladen swallow ?'.split()) # doctest: +SKIP
+        [('What', 'WP'), ('is', 'VBZ'), ('the', 'DT'), ('airspeed', 'NN'), ('of', 'IN'), ('an', 'DT'), ('unladen', 'JJ'), ('swallow', 'VB'), ('?', '.')]
     """
 
-    _OUTPUT_FORMAT = "penn"
+    _SEPARATOR = "_"
+    _JAR = "stanford-postagger.jar"
 
     def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "The StanfordParser will be deprecated\n"
-            "Please use \033[91mnltk.parse.corenlp.CoreNLPParser\033[0m instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
         super().__init__(*args, **kwargs)
 
-    def _make_tree(self, result):
-        return Tree.fromstring(result)
+    @property
+    def _cmd(self):
+        return [
+            "edu.stanford.nlp.tagger.maxent.MaxentTagger",
+            "-model",
+            self._stanford_model,
+            "-textFile",
+            self._input_file_path,
+            "-tokenize",
+            "false",
+            "-outputFormatOptions",
+            "keepEmptySentences",
+        ]
 
 
-class StanfordDependencyParser(GenericStanfordParser):
+class StanfordNERTagger(StanfordTagger):
     """
-    >>> dep_parser=StanfordDependencyParser(
-    ...     model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz"
-    ... ) # doctest: +SKIP
+    A class for Named-Entity Tagging with Stanford Tagger. The input is the paths to:
 
-    >>> [parse.tree() for parse in dep_parser.raw_parse("The quick brown fox jumps over the lazy dog.")] # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('jumps', [Tree('fox', ['The', 'quick', 'brown']), Tree('dog', ['over', 'the', 'lazy'])])]
+    - a model trained on training data
+    - (optionally) the path to the stanford tagger jar file. If not specified here,
+      then this jar file must be specified in the CLASSPATH environment variable.
+    - (optionally) the encoding of the training data (default: UTF-8)
 
-    >>> [list(parse.triples()) for parse in dep_parser.raw_parse("The quick brown fox jumps over the lazy dog.")] # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [[((u'jumps', u'VBZ'), u'nsubj', (u'fox', u'NN')), ((u'fox', u'NN'), u'det', (u'The', u'DT')),
-    ((u'fox', u'NN'), u'amod', (u'quick', u'JJ')), ((u'fox', u'NN'), u'amod', (u'brown', u'JJ')),
-    ((u'jumps', u'VBZ'), u'nmod', (u'dog', u'NN')), ((u'dog', u'NN'), u'case', (u'over', u'IN')),
-    ((u'dog', u'NN'), u'det', (u'the', u'DT')), ((u'dog', u'NN'), u'amod', (u'lazy', u'JJ'))]]
+    Example:
 
-    >>> sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.raw_parse_sents((
-    ...     "The quick brown fox jumps over the lazy dog.",
-    ...     "The quick grey wolf jumps over the lazy fox."
-    ... ))], []) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('jumps', [Tree('fox', ['The', 'quick', 'brown']), Tree('dog', ['over', 'the', 'lazy'])]),
-    Tree('jumps', [Tree('wolf', ['The', 'quick', 'grey']), Tree('fox', ['over', 'the', 'lazy'])])]
-
-    >>> sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.parse_sents((
-    ...     "I 'm a dog".split(),
-    ...     "This is my friends ' cat ( the tabby )".split(),
-    ... ))], []) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('dog', ['I', "'m", 'a']), Tree('cat', ['This', 'is', Tree('friends', ['my', "'"]), Tree('tabby', ['the'])])]
-
-    >>> sum([[list(parse.triples()) for parse in dep_graphs] for dep_graphs in dep_parser.tagged_parse_sents((
-    ...     (
-    ...         ("The", "DT"),
-    ...         ("quick", "JJ"),
-    ...         ("brown", "JJ"),
-    ...         ("fox", "NN"),
-    ...         ("jumped", "VBD"),
-    ...         ("over", "IN"),
-    ...         ("the", "DT"),
-    ...         ("lazy", "JJ"),
-    ...         ("dog", "NN"),
-    ...         (".", "."),
-    ...     ),
-    ... ))],[]) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [[((u'jumped', u'VBD'), u'nsubj', (u'fox', u'NN')), ((u'fox', u'NN'), u'det', (u'The', u'DT')),
-    ((u'fox', u'NN'), u'amod', (u'quick', u'JJ')), ((u'fox', u'NN'), u'amod', (u'brown', u'JJ')),
-    ((u'jumped', u'VBD'), u'nmod', (u'dog', u'NN')), ((u'dog', u'NN'), u'case', (u'over', u'IN')),
-    ((u'dog', u'NN'), u'det', (u'the', u'DT')), ((u'dog', u'NN'), u'amod', (u'lazy', u'JJ'))]]
-
+        >>> from nltk.tag import StanfordNERTagger
+        >>> st = StanfordNERTagger('english.all.3class.distsim.crf.ser.gz') # doctest: +SKIP
+        >>> st.tag('Rami Eid is studying at Stony Brook University in NY'.split()) # doctest: +SKIP
+        [('Rami', 'PERSON'), ('Eid', 'PERSON'), ('is', 'O'), ('studying', 'O'),
+         ('at', 'O'), ('Stony', 'ORGANIZATION'), ('Brook', 'ORGANIZATION'),
+         ('University', 'ORGANIZATION'), ('in', 'O'), ('NY', 'LOCATION')]
     """
 
-    _OUTPUT_FORMAT = "conll2007"
+    _SEPARATOR = "/"
+    _JAR = "stanford-ner.jar"
+    _FORMAT = "slashTags"
 
     def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "The StanfordDependencyParser will be deprecated\n"
-            "Please use \033[91mnltk.parse.corenlp.CoreNLPDependencyParser\033[0m instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
         super().__init__(*args, **kwargs)
 
-    def _make_tree(self, result):
-        return DependencyGraph(result, top_relation_label="root")
+    @property
+    def _cmd(self):
+        # Adding -tokenizerFactory edu.stanford.nlp.process.WhitespaceTokenizer -tokenizerOptions tokenizeNLs=false for not using stanford Tokenizer
+        return [
+            "edu.stanford.nlp.ie.crf.CRFClassifier",
+            "-loadClassifier",
+            self._stanford_model,
+            "-textFile",
+            self._input_file_path,
+            "-outputFormat",
+            self._FORMAT,
+            "-tokenizerFactory",
+            "edu.stanford.nlp.process.WhitespaceTokenizer",
+            "-tokenizerOptions",
+            '"tokenizeNLs=false"',
+        ]
 
+    def parse_output(self, text, sentences):
+        if self._FORMAT == "slashTags":
+            # Joint together to a big list
+            tagged_sentences = []
+            for tagged_sentence in text.strip().split("\n"):
+                for tagged_word in tagged_sentence.strip().split():
+                    word_tags = tagged_word.strip().split(self._SEPARATOR)
+                    tagged_sentences.append(("".join(word_tags[:-1]), word_tags[-1]))
 
-class StanfordNeuralDependencyParser(GenericStanfordParser):
-    """
-    >>> from nltk.parse.stanford import StanfordNeuralDependencyParser # doctest: +SKIP
-    >>> dep_parser=StanfordNeuralDependencyParser(java_options='-mx4g')# doctest: +SKIP
+            # Separate it according to the input
+            result = []
+            start = 0
+            for sent in sentences:
+                result.append(tagged_sentences[start : start + len(sent)])
+                start += len(sent)
+            return result
 
-    >>> [parse.tree() for parse in dep_parser.raw_parse("The quick brown fox jumps over the lazy dog.")] # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('jumps', [Tree('fox', ['The', 'quick', 'brown']), Tree('dog', ['over', 'the', 'lazy']), '.'])]
-
-    >>> [list(parse.triples()) for parse in dep_parser.raw_parse("The quick brown fox jumps over the lazy dog.")] # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [[((u'jumps', u'VBZ'), u'nsubj', (u'fox', u'NN')), ((u'fox', u'NN'), u'det',
-    (u'The', u'DT')), ((u'fox', u'NN'), u'amod', (u'quick', u'JJ')), ((u'fox', u'NN'),
-    u'amod', (u'brown', u'JJ')), ((u'jumps', u'VBZ'), u'nmod', (u'dog', u'NN')),
-    ((u'dog', u'NN'), u'case', (u'over', u'IN')), ((u'dog', u'NN'), u'det',
-    (u'the', u'DT')), ((u'dog', u'NN'), u'amod', (u'lazy', u'JJ')), ((u'jumps', u'VBZ'),
-    u'punct', (u'.', u'.'))]]
-
-    >>> sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.raw_parse_sents((
-    ...     "The quick brown fox jumps over the lazy dog.",
-    ...     "The quick grey wolf jumps over the lazy fox."
-    ... ))], []) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('jumps', [Tree('fox', ['The', 'quick', 'brown']), Tree('dog', ['over',
-    'the', 'lazy']), '.']), Tree('jumps', [Tree('wolf', ['The', 'quick', 'grey']),
-    Tree('fox', ['over', 'the', 'lazy']), '.'])]
-
-    >>> sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.parse_sents((
-    ...     "I 'm a dog".split(),
-    ...     "This is my friends ' cat ( the tabby )".split(),
-    ... ))], []) # doctest: +NORMALIZE_WHITESPACE +SKIP
-    [Tree('dog', ['I', "'m", 'a']), Tree('cat', ['This', 'is', Tree('friends',
-    ['my', "'"]), Tree('tabby', ['-LRB-', 'the', '-RRB-'])])]
-    """
-
-    _OUTPUT_FORMAT = "conll"
-    _MAIN_CLASS = "edu.stanford.nlp.pipeline.StanfordCoreNLP"
-    _JAR = r"stanford-corenlp-(\d+)(\.(\d+))+\.jar"
-    _MODEL_JAR_PATTERN = r"stanford-corenlp-(\d+)(\.(\d+))+-models\.jar"
-    _USE_STDIN = True
-    _DOUBLE_SPACED_OUTPUT = True
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "The StanfordNeuralDependencyParser will be deprecated\n"
-            "Please use \033[91mnltk.parse.corenlp.CoreNLPDependencyParser\033[0m instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        super().__init__(*args, **kwargs)
-        self.corenlp_options += "-annotators tokenize,ssplit,pos,depparse"
-
-    def tagged_parse_sents(self, sentences, verbose=False):
-        """
-        Currently unimplemented because the neural dependency parser (and
-        the StanfordCoreNLP pipeline class) doesn't support passing in pre-
-        tagged tokens.
-        """
-        raise NotImplementedError(
-            "tagged_parse[_sents] is not supported by "
-            "StanfordNeuralDependencyParser; use "
-            "parse[_sents] or raw_parse[_sents] instead."
-        )
-
-    def _make_tree(self, result):
-        return DependencyGraph(result, top_relation_label="ROOT")
+        raise NotImplementedError

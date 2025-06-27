@@ -1,4 +1,4 @@
-# Natural Language Toolkit: Senna Interface
+# Natural Language Toolkit: Senna POS Tagger
 #
 # Copyright (C) 2001-2024 NLTK Project
 # Author: Rami Al-Rfou' <ralrfou@cs.stonybrook.edu>
@@ -6,170 +6,129 @@
 # For license information, see LICENSE.TXT
 
 """
-A general interface to the SENNA pipeline that supports any of the
-operations specified in SUPPORTED_OPERATIONS.
-
-Applying multiple operations at once has the speed advantage. For example,
-Senna will automatically determine POS tags if you are extracting named
-entities. Applying both of the operations will cost only the time of
-extracting the named entities.
-
-The SENNA pipeline has a fixed maximum size of the sentences that it can read.
-By default it is 1024 token/sentence. If you have larger sentences, changing
-the MAX_SENTENCE_SIZE value in SENNA_main.c should be considered and your
-system specific binary should be rebuilt. Otherwise this could introduce
-misalignment errors.
+Senna POS tagger, NER Tagger, Chunk Tagger
 
 The input is:
 
 - path to the directory that contains SENNA executables. If the path is incorrect,
-  Senna will automatically search for executable file specified in SENNA environment variable
-- List of the operations needed to be performed.
+  SennaTagger will automatically search for executable file specified in SENNA environment variable
 - (optionally) the encoding of the input data (default:utf-8)
 
 Note: Unit tests for this module can be found in test/unit/test_senna.py
 
->>> from nltk.classify import Senna
->>> pipeline = Senna('/usr/share/senna-v3.0', ['pos', 'chk', 'ner'])  # doctest: +SKIP
->>> sent = 'Dusseldorf is an international business center'.split()
->>> [(token['word'], token['chk'], token['ner'], token['pos']) for token in pipeline.tag(sent)]  # doctest: +SKIP
-[('Dusseldorf', 'B-NP', 'B-LOC', 'NNP'), ('is', 'B-VP', 'O', 'VBZ'), ('an', 'B-NP', 'O', 'DT'),
-('international', 'I-NP', 'O', 'JJ'), ('business', 'I-NP', 'O', 'NN'), ('center', 'I-NP', 'O', 'NN')]
+>>> from nltk.tag import SennaTagger
+>>> tagger = SennaTagger('/usr/share/senna-v3.0')  # doctest: +SKIP
+>>> tagger.tag('What is the airspeed of an unladen swallow ?'.split()) # doctest: +SKIP
+[('What', 'WP'), ('is', 'VBZ'), ('the', 'DT'), ('airspeed', 'NN'),
+('of', 'IN'), ('an', 'DT'), ('unladen', 'NN'), ('swallow', 'NN'), ('?', '.')]
+
+>>> from nltk.tag import SennaChunkTagger
+>>> chktagger = SennaChunkTagger('/usr/share/senna-v3.0')  # doctest: +SKIP
+>>> chktagger.tag('What is the airspeed of an unladen swallow ?'.split()) # doctest: +SKIP
+[('What', 'B-NP'), ('is', 'B-VP'), ('the', 'B-NP'), ('airspeed', 'I-NP'),
+('of', 'B-PP'), ('an', 'B-NP'), ('unladen', 'I-NP'), ('swallow', 'I-NP'),
+('?', 'O')]
+
+>>> from nltk.tag import SennaNERTagger
+>>> nertagger = SennaNERTagger('/usr/share/senna-v3.0')  # doctest: +SKIP
+>>> nertagger.tag('Shakespeare theatre was in London .'.split()) # doctest: +SKIP
+[('Shakespeare', 'B-PER'), ('theatre', 'O'), ('was', 'O'), ('in', 'O'),
+('London', 'B-LOC'), ('.', 'O')]
+>>> nertagger.tag('UN headquarters are in NY , USA .'.split()) # doctest: +SKIP
+[('UN', 'B-ORG'), ('headquarters', 'O'), ('are', 'O'), ('in', 'O'),
+('NY', 'B-LOC'), (',', 'O'), ('USA', 'B-LOC'), ('.', 'O')]
 """
 
-from os import environ, path, sep
-from platform import architecture, system
-from subprocess import PIPE, Popen
-
-from nltk.tag.api import TaggerI
+from nltk.classify import Senna
 
 
-class Senna(TaggerI):
-    SUPPORTED_OPERATIONS = ["pos", "chk", "ner"]
-
-    def __init__(self, senna_path, operations, encoding="utf-8"):
-        self._encoding = encoding
-        self._path = path.normpath(senna_path) + sep
-
-        # Verifies the existence of the executable on the self._path first
-        # senna_binary_file_1 = self.executable(self._path)
-        exe_file_1 = self.executable(self._path)
-        if not path.isfile(exe_file_1):
-            # Check for the system environment
-            if "SENNA" in environ:
-                # self._path = path.join(environ['SENNA'],'')
-                self._path = path.normpath(environ["SENNA"]) + sep
-                exe_file_2 = self.executable(self._path)
-                if not path.isfile(exe_file_2):
-                    raise LookupError(
-                        "Senna executable expected at %s or %s but not found"
-                        % (exe_file_1, exe_file_2)
-                    )
-
-        self.operations = operations
-
-    def executable(self, base_path):
-        """
-        The function that determines the system specific binary that should be
-        used in the pipeline. In case, the system is not known the default senna binary will
-        be used.
-        """
-        os_name = system()
-        if os_name == "Linux":
-            bits = architecture()[0]
-            if bits == "64bit":
-                return path.join(base_path, "senna-linux64")
-            return path.join(base_path, "senna-linux32")
-        if os_name == "Windows":
-            return path.join(base_path, "senna-win32.exe")
-        if os_name == "Darwin":
-            return path.join(base_path, "senna-osx")
-        return path.join(base_path, "senna")
-
-    def _map(self):
-        """
-        A method that calculates the order of the columns that SENNA pipeline
-        will output the tags into. This depends on the operations being ordered.
-        """
-        _map = {}
-        i = 1
-        for operation in Senna.SUPPORTED_OPERATIONS:
-            if operation in self.operations:
-                _map[operation] = i
-                i += 1
-        return _map
-
-    def tag(self, tokens):
-        """
-        Applies the specified operation(s) on a list of tokens.
-        """
-        return self.tag_sents([tokens])[0]
+class SennaTagger(Senna):
+    def __init__(self, path, encoding="utf-8"):
+        super().__init__(path, ["pos"], encoding)
 
     def tag_sents(self, sentences):
         """
-        Applies the tag method over a list of sentences. This method will return a
-        list of dictionaries. Every dictionary will contain a word with its
-        calculated annotations/tags.
+        Applies the tag method over a list of sentences. This method will return
+        for each sentence a list of tuples of (word, tag).
         """
-        encoding = self._encoding
+        tagged_sents = super().tag_sents(sentences)
+        for i in range(len(tagged_sents)):
+            for j in range(len(tagged_sents[i])):
+                annotations = tagged_sents[i][j]
+                tagged_sents[i][j] = (annotations["word"], annotations["pos"])
+        return tagged_sents
 
-        if not path.isfile(self.executable(self._path)):
-            raise LookupError(
-                "Senna executable expected at %s but not found"
-                % self.executable(self._path)
-            )
 
-        # Build the senna command to run the tagger
-        _senna_cmd = [
-            self.executable(self._path),
-            "-path",
-            self._path,
-            "-usrtokens",
-            "-iobtags",
-        ]
-        _senna_cmd.extend(["-" + op for op in self.operations])
+class SennaChunkTagger(Senna):
+    def __init__(self, path, encoding="utf-8"):
+        super().__init__(path, ["chk"], encoding)
 
-        # Serialize the actual sentences to a temporary string
-        _input = "\n".join(" ".join(x) for x in sentences) + "\n"
-        if isinstance(_input, str) and encoding:
-            _input = _input.encode(encoding)
+    def tag_sents(self, sentences):
+        """
+        Applies the tag method over a list of sentences. This method will return
+        for each sentence a list of tuples of (word, tag).
+        """
+        tagged_sents = super().tag_sents(sentences)
+        for i in range(len(tagged_sents)):
+            for j in range(len(tagged_sents[i])):
+                annotations = tagged_sents[i][j]
+                tagged_sents[i][j] = (annotations["word"], annotations["chk"])
+        return tagged_sents
 
-        # Run the tagger and get the output
-        p = Popen(_senna_cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-        (stdout, stderr) = p.communicate(input=_input)
-        senna_output = stdout
+    def bio_to_chunks(self, tagged_sent, chunk_type):
+        """
+        Extracts the chunks in a BIO chunk-tagged sentence.
 
-        # Check the return code.
-        if p.returncode != 0:
-            raise RuntimeError("Senna command failed! Details: %s" % stderr)
+        >>> from nltk.tag import SennaChunkTagger
+        >>> chktagger = SennaChunkTagger('/usr/share/senna-v3.0')  # doctest: +SKIP
+        >>> sent = 'What is the airspeed of an unladen swallow ?'.split()
+        >>> tagged_sent = chktagger.tag(sent)  # doctest: +SKIP
+        >>> tagged_sent  # doctest: +SKIP
+        [('What', 'B-NP'), ('is', 'B-VP'), ('the', 'B-NP'), ('airspeed', 'I-NP'),
+        ('of', 'B-PP'), ('an', 'B-NP'), ('unladen', 'I-NP'), ('swallow', 'I-NP'),
+        ('?', 'O')]
+        >>> list(chktagger.bio_to_chunks(tagged_sent, chunk_type='NP'))  # doctest: +SKIP
+        [('What', '0'), ('the airspeed', '2-3'), ('an unladen swallow', '5-6-7')]
 
-        if encoding:
-            senna_output = stdout.decode(encoding)
+        :param tagged_sent: A list of tuples of word and BIO chunk tag.
+        :type tagged_sent: list(tuple)
+        :param tagged_sent: The chunk tag that users want to extract, e.g. 'NP' or 'VP'
+        :type tagged_sent: str
 
-        # Output the tagged sentences
-        map_ = self._map()
-        tagged_sentences = [[]]
-        sentence_index = 0
-        token_index = 0
-        for tagged_word in senna_output.strip().split("\n"):
-            if not tagged_word:
-                tagged_sentences.append([])
-                sentence_index += 1
-                token_index = 0
-                continue
-            tags = tagged_word.split("\t")
-            result = {}
-            for tag in map_:
-                result[tag] = tags[map_[tag]].strip()
-            try:
-                result["word"] = sentences[sentence_index][token_index]
-            except IndexError as e:
-                raise IndexError(
-                    "Misalignment error occurred at sentence number %d. Possible reason"
-                    " is that the sentence size exceeded the maximum size. Check the "
-                    "documentation of Senna class for more information."
-                    % sentence_index
-                ) from e
-            tagged_sentences[-1].append(result)
-            token_index += 1
-        return tagged_sentences
+        :return: An iterable of tuples of chunks that users want to extract
+          and their corresponding indices.
+        :rtype: iter(tuple(str))
+        """
+        current_chunk = []
+        current_chunk_position = []
+        for idx, word_pos in enumerate(tagged_sent):
+            word, pos = word_pos
+            if "-" + chunk_type in pos:  # Append the word to the current_chunk.
+                current_chunk.append(word)
+                current_chunk_position.append(idx)
+            else:
+                if current_chunk:  # Flush the full chunk when out of an NP.
+                    _chunk_str = " ".join(current_chunk)
+                    _chunk_pos_str = "-".join(map(str, current_chunk_position))
+                    yield _chunk_str, _chunk_pos_str
+                    current_chunk = []
+                    current_chunk_position = []
+        if current_chunk:  # Flush the last chunk.
+            yield " ".join(current_chunk), "-".join(map(str, current_chunk_position))
+
+
+class SennaNERTagger(Senna):
+    def __init__(self, path, encoding="utf-8"):
+        super().__init__(path, ["ner"], encoding)
+
+    def tag_sents(self, sentences):
+        """
+        Applies the tag method over a list of sentences. This method will return
+        for each sentence a list of tuples of (word, tag).
+        """
+        tagged_sents = super().tag_sents(sentences)
+        for i in range(len(tagged_sents)):
+            for j in range(len(tagged_sents[i])):
+                annotations = tagged_sents[i][j]
+                tagged_sents[i][j] = (annotations["word"], annotations["ner"])
+        return tagged_sents
